@@ -1,0 +1,42 @@
+{
+  "name": "openanime-cli",
+  "author": "Luxotick",
+  "version": "1.0.0",
+  "module": "src/index.ts",
+  "type": "module",
+  "bin": {
+    "openanime": "./dist/index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts"
+  },
+  "devDependencies": {
+    "@types/discord-rpc": "^4.0.9",
+    "@types/node": "^20.0.0",
+    "@types/prompts": "^2.4.9",
+    "tsx": "^4.19.3",
+    "typescript": "^5.5.4"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0-rc.12",
+    "commander": "^12.1.0",
+    "discord-rpc": "^4.0.1",
+    "node-fetch": "^3.3.2",
+    "open": "^10.1.2",
+    "prompts": "^2.4.2"
+  },
+  "preferGlobal": true,
+  "description": "A command-line interface for watching anime from various streaming sites",
+  "keywords": [
+    "anime",
+    "cli",
+    "streaming",
+    "video"
+  ]
+}
