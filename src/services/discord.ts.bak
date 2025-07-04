@@ -1,0 +1,302 @@
+/**
+ * Discord Rich Presence integration for OpenAnime CLI
+ * Provides Discord status updates about what anime/episode is being watched
+ */
+
+import RPC from 'discord-rpc';
+import { getConfig } from '../utils/config.js';
+
+// Discord Developer Portal'da oluşturduğunuz uygulamanın ID'si - eski projeden alındı
+// Bu ID'yi Discord Developer Portal'dan aldığınız gerçek bir ID ile değiştirmelisiniz
+const CLIENT_ID = '1335425935578628208'; 
+
+// Discord RPC başlatılması için gerekli
+RPC.register(CLIENT_ID);
+
+// Rich Presence özelliklerini tutacak sınıf
+export class DiscordRPC {
+  private static instance: DiscordRPC;
+  private client: RPC.Client;
+  private connected: boolean = false;
+  private startTimestamp: Date = new Date();
+  
+  // Default activity - eski projeden uyarlandı
+  private defaultActivity = {
+    details: 'Anime Geziniyor',
+    state: 'Boşta',
+    largeImageKey: 'ads_z',
+    largeImageText: 'OpenAnime CLI',
+    instance: false,
+    buttons: [
+      {
+        label: 'GitHub Projesi',
+        url: 'https://github.com/Luxotick/openanime-cli',
+      },
+      {
+        label: 'OpenAnime',
+        url: 'https://openani.me',
+      },
+    ],
+  };
+
+  private constructor() {
+    this.client = new RPC.Client({ transport: 'ipc' });
+    this.startTimestamp = new Date();
+  }
+
+  // Singleton örneğini almak için
+  public static getInstance(): DiscordRPC {
+    if (!DiscordRPC.instance) {
+      DiscordRPC.instance = new DiscordRPC();
+    }
+    return DiscordRPC.instance;
+  }
+
+  // Discord RPC bağlantısını başlat - eski projeden uyarlandı ve geliştirildi
+  public connect(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const config = getConfig();
+      
+      // Discord RPC devre dışı bırakıldıysa bağlanma
+      if (!config.enableDiscordRPC) {
+        console.log('Discord RPC config dosyasında devre dışı bırakılmış');
+        resolve();
+        return;
+      }
+
+      if (this.connected) {
+        console.log('Discord RPC zaten bağlı');
+        resolve();
+        return;
+      }
+
+      try {
+        console.log(`Discord RPC bağlantısı başlatılıyor (Client ID: ${CLIENT_ID})`);
+        
+        // Event handler'ları ekle
+        this.client.on('ready', () => {
+          this.connected = true;
+          console.log(`Discord RPC bağlantısı başarılı (Kullanıcı: ${this.client.user?.username})`);
+          
+          // Bağlantı başarılı olduğunda aktiviteyi temizle ve varsayılan aktiviteyi ayarla
+          this.clearActivity().then(() => this.updateDefaultActivity());
+          resolve();
+        });
+
+        this.client.on('disconnected', () => {
+          this.connected = false;
+          console.log('Discord RPC bağlantısı kesildi, 30 saniye içinde tekrar denenecek');
+          setTimeout(() => this.connect(), 30000); // 30 saniye sonra tekrar bağlanmayı dene
+        });
+
+        // Event handler'lar ayarlandıktan sonra login işlemini başlat - await kullanmadan
+        this.client.login({ clientId: CLIENT_ID }).catch(error => {
+          this.connected = false;
+          console.error('Discord RPC bağlantı hatası:', error);
+          if (error instanceof Error) {
+            console.error('Hata mesajı:', error.message);
+          }
+          
+          console.log('30 saniye içinde tekrar bağlanmayı deneyecek');
+          setTimeout(() => this.connect(), 30000); // 30 saniye sonra tekrar bağlanmayı dene
+          resolve(); // Hataya rağmen promise'i resolve et, böylece CLI bloklanmaz
+        });
+      } catch (error) {
+        this.connected = false;
+        console.error('Discord RPC bağlantı hatası:', error);
+        if (error instanceof Error) {
+          console.error('Hata mesajı:', error.message);
+        }
+        
+        console.log('30 saniye içinde tekrar bağlanmayı deneyecek');
+        setTimeout(() => this.connect(), 30000); // 30 saniye sonra tekrar bağlanmayı dene
+        resolve(); // Hataya rağmen promise'i resolve et, böylece CLI bloklanmaz
+      }
+  }
+
+  // Aktiviteyi temizle
+  public clearActivity(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      if (!this.connected) {
+        resolve();
+        return;
+      }
+      
+      this.client.clearActivity()
+        .then(() => resolve())
+        .catch(error => {
+          console.error('Discord RPC activity clear error:', error);
+          resolve(); // Still resolve to not block CLI
+        });
+    });
+  }
+
+  // Varsayılan aktiviteyi ayarla
+  public async updateDefaultActivity(): Promise<void> {
+    if (!this.connected) return;
+    
+    try {
+      await this.client.setActivity(this.defaultActivity);
+    } catch (error) {
+      console.error('Discord RPC varsayılan aktivite hatası:', error);
+    }
+  }
+
+  // Rich Presence durumunu güncelle - butonlar ve daha fazla özellik eklendi
+  public async updateActivity(details: string, state: string, imageKey: string = 'ads_z', imageText: string = 'OpenAnime CLI'): Promise<void> {
+    const config = getConfig();
+    
+    // Discord RPC devre dışı bırakıldıysa güncelleme
+    if (!config.enableDiscordRPC || !this.connected) {
+      return;
+    }
+
+    try {
+      // Butonları düzeltmek için Discord RPC formatına uygun şekilde activity nesnesini oluştur
+      const activity: RPC.Presence = {
+        details, // İlk satır
+        state,   // İkinci satır
+        startTimestamp: this.startTimestamp,
+        largeImageKey: imageKey,
+        largeImageText: imageText,
+        instance: false,
+        buttons: [
+          {
+            label: 'GitHub Projesi',
+            url: 'https://github.com/Luxotick/openanime-cli',
+          },
+          {
+            label: 'OpenAnime',
+            url: 'https://openani.me',
+          },
+        ]
+      };
+
+      // Debug için aktiviteyi konsola yazdır
+      console.log('Discord RPC aktivite güncelleniyor:', JSON.stringify(activity, null, 2));
+      
+      // Discord RPC aktivitesini güncelle
+      await this.client.setActivity(activity);
+      console.log('Discord RPC aktivite güncellemesi başarılı');
+    } catch (error) {
+      console.error('Discord RPC aktivite güncelleme hatası:', error);
+      // Hata detaylarını göster
+      if (error instanceof Error) {
+        console.error('Hata mesajı:', error.message);
+        console.error('Hata stack:', error.stack);
+      }
+    }
+  }
+
+  // Anime izlerken aktiviteyi güncelle - eski projeye benzer yapıda
+  public async updateWatchingAnime(animeTitle: string, episodeInfo: string, episodeUrl?: string, imageUrl?: string): Promise<void> {
+    let imageKey = 'ads_z';
+    
+    // Eğer anime için özel bir görsel varsa, onu kullan
+    if (imageUrl) {
+      try {
+        const parsedUrl = new URL(imageUrl);
+        const pathParts = parsedUrl.pathname.split('/');
+        const filename = pathParts[pathParts.length - 1];
+        if (filename) {
+          imageKey = filename.split('.')[0]; // Uzantıyı kaldır
+        }
+      } catch (error) {
+        console.error('Görsel URL ayrıştırma hatası:', error);
+      }
+    }
+
+    try {
+      // URL'leri daha dinamik hale getirdik - eski projeden uyarlandı
+      const watchUrl = episodeUrl ? `https://openani.me/${episodeUrl}` : 'https://openani.me';
+      
+      // Discord RPC formatına uygun şekilde aktivite nesnesini oluştur
+      const activity: RPC.Presence = {
+        details: `Watching: ${animeTitle}`,
+        state: `Episode: ${episodeInfo}`,
+        startTimestamp: this.startTimestamp,
+        largeImageKey: imageKey,
+        largeImageText: animeTitle,
+        instance: false,
+        buttons: [
+          {
+            label: 'GitHub Project',
+            url: 'https://github.com/Luxotick/openanime-cli',
+          },
+          {
+            label: 'Watch Episode',
+            url: watchUrl,
+          },
+        ]
+      };
+      
+      // Debug için aktiviteyi konsola yazdır
+      console.log('Discord RPC anime aktivitesi:', JSON.stringify(activity, null, 2));
+      
+      // Discord RPC aktivitesini güncelle
+      await this.client.setActivity(activity);
+      console.log('Discord RPC anime aktivite güncellemesi başarılı');
+    } catch (error) {
+      console.error('Discord RPC anime izleme aktivitesi hatası:', error);
+      if (error instanceof Error) {
+        console.error('Hata mesajı:', error.message);
+      }
+    }
+  }
+
+  // Anime ararken aktiviteyi güncelle
+  public async updateSearching(query: string): Promise<void> {
+    await this.updateActivity(
+      'Searching Anime',
+      `Query: ${query}`,
+      'search',
+      'Searching for anime'
+    );
+  }
+
+  // Ana menüde aktiviteyi güncelle
+  public async updateMainMenu(): Promise<void> {
+    await this.updateActivity(
+      'Browsing Anime',
+      'In Main Menu',
+      'ads_z',
+      'OpenAnime CLI'
+    );
+  }
+
+  // Bağlantıyı kapat
+  public async disconnect(): Promise<void> {
+    if (!this.connected) {
+      return;
+    }
+    
+    try {
+      await this.clearActivity();
+      this.client.destroy();
+      this.connected = false;
+      console.log('Discord RPC bağlantısı kapatıldı');
+    } catch (error) {
+      console.error('Discord RPC bağlantısını kapatma hatası:', error);
+    }
+  }
+  
+  // Özel bir anime URL'si oluştur
+  private getAnimeUrl(slug: string, season?: number, episode?: number): string {
+    let url = `https://openani.me/anime/${slug}`;
+    if (season) {
+      url += `/${season}`;
+      if (episode) {
+        url += `/${episode}`;
+      }
+    }
+    return url;
+  }
+}
+
+// Discord RPC instance'ını dışa aktar
+export const discordRPC = DiscordRPC.getInstance();
+
+// Otomatik olarak bağlantıyı başlat - eski projeden uyarlandı
+setTimeout(() => {
+  discordRPC.connect().catch(console.error);
+}, 1000); // 1 saniye sonra bağlanmayı dene
